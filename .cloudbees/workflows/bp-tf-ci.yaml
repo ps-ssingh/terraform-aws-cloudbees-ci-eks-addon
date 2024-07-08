@@ -57,8 +57,8 @@ jobs:
     uses: ubuntu-latest
     outputs:
       modified_tf_files: 
-       description: File changed during commit.
-       value: ${{ steps.determine.outputs.modified_tf_files }}
+        description: File changed during commit.
+        value: ${{ steps.determine.outputs.modified_tf_files }}
     steps:
       - name: Checkout code
         uses: cloudbees-io/checkout@v1
