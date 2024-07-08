@@ -52,11 +52,28 @@ jobs:
           --bucket ${{ env.BUCKET_NAME_TF_STATE }} \
           --region ${{ env.AWS_REGION }} || echo "Bucket ${{ env.BUCKET_NAME_TF_STATE }} already exists"
 
+
+
+  determine-changes:
+    uses: ubuntu-latest
+    outputs:
+      changed-files: ${{ steps.determine.outputs.changed_files }}
+    steps:
+      - name: Checkout code
+        uses: cloudbees-io/checkout@v1
+
+      - name: Determine changed files
+        uses: docker://alpine/git:latest
+        id: determine
+        shell: bash
+        run: |
+          echo "::set-output name=changed_files::$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | tr '\n' ' ')"
+
   bp01:
     env:
       CLEAN_UP: "false"
     needs:
-      - init
+      - determine-changes
     steps:
 
     - name: Configure AWS Credentials
@@ -115,7 +132,7 @@ jobs:
     env:
         CLEAN_UP: "false"
     needs:
-      - init
+      - determine-changes
     steps:
 
     - name: Configure AWS Credentials
