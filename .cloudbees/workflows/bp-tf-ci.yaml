@@ -51,8 +51,9 @@ jobs:
         uses: docker://ubuntu:latest
         id: determine
         shell: bash
-        run: >
+        run: |
           apt-get update && apt-get install -y git unzip zip
+
           echo $(git show --name-only --oneline HEAD | tail -n +2 | grep '\.tf$')
           MODIFIED_TF_FILES=$(git show --name-only --oneline HEAD | tail -n +2 | grep '\.tf$')
           echo "$MODIFIED_TF_FILES" >  "$CLOUDBEES_OUTPUTS/modified_tf_files" 
