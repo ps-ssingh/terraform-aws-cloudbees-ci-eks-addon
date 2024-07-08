@@ -4,7 +4,6 @@ data "aws_route53_zone" "this" {
 
 data "aws_availability_zones" "available" {}
 
-
 locals {
   name   = var.suffix == "" ? "cbci-bp01" : "cbci-bp01-${var.suffix}"
   region = "us-east-1"
