@@ -64,6 +64,7 @@ jobs:
         id: determine
         shell: bash
         run: |
+          set -x
           MODIFIED_TF_FILES=$(git show --name-only --oneline HEAD | tail -n +2 | grep '.tf$' | tr '\n' ' ')
           echo "$MODIFIED_TF_FILES" >  "$CLOUDBEES_OUTPUTS/modified_tf_files" 
 
