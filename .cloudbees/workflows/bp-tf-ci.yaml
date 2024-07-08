@@ -74,6 +74,7 @@ jobs:
       CLEAN_UP: "false"
     needs:
       - determine-changes
+    if: contains(needs.determine-changes.outputs.modified_tf_files, 'blueprints/01/')
     steps:
 
     - name: Configure AWS Credentials
@@ -133,6 +134,7 @@ jobs:
         CLEAN_UP: "false"
     needs:
       - determine-changes
+    if: contains(needs.determine-changes.outputs.modified_tf_files, 'blueprints/02/')
     steps:
 
     - name: Configure AWS Credentials
