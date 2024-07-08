@@ -59,6 +59,7 @@ jobs:
           echo $(git show --name-only --oneline HEAD | tail -n +2)
           echo $(git show --name-only --oneline HEAD | tail -n +2 | grep '\.tf$')
           MODIFIED_TF_FILES=$(git show --name-only --oneline HEAD | tail -n +2 | grep '\.tf$')
+          echo $(git diff-tree --no-commit-id --name-only -r HEAD | grep '\.tf$')
           echo "$MODIFIED_TF_FILES" >  "$CLOUDBEES_OUTPUTS/modified_tf_files" 
   bp01:
     env:
