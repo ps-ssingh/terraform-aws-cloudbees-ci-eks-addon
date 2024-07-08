@@ -56,7 +56,9 @@ jobs:
   determine-changes:
     uses: ubuntu-latest
     outputs:
-      changed-files: ${{ steps.determine.outputs.modified_tf_files }}
+      modified_tf_files: 
+       description: File changed during commit.
+       value: ${{ steps.determine.outputs.modified_tf_files }}
     steps:
       - name: Checkout code
         uses: cloudbees-io/checkout@v1
@@ -67,6 +69,7 @@ jobs:
         shell: bash
         run: |
           MODIFIED_TF_FILES=$(git show --name-only --oneline HEAD | tail -n +2 | grep '.tf$' | tr '\n' ' ')
+          echo "$MODIFIED_TF_FILES" >  "$CLOUDBEES_OUTPUTS/modified_tf_files" 
 
   bp01:
     env:
