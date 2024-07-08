@@ -57,7 +57,7 @@ jobs:
   determine-changes:
     uses: ubuntu-latest
     outputs:
-      changed-files: ${{ steps.determine.outputs.changed_files }}
+      changed-files: ${{ steps.determine.outputs.modified_tf_files }}
     steps:
       - name: Checkout code
         uses: cloudbees-io/checkout@v1
@@ -67,7 +67,7 @@ jobs:
         id: determine
         shell: bash
         run: |
-          echo "::set-output name=changed_files::$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | tr '\n' ' ')"
+          MODIFIED_TF_FILES=$(git show --name-only --oneline HEAD | tail -n +2 | grep '.tf$' | tr '\n' ' ')
 
   bp01:
     env:
