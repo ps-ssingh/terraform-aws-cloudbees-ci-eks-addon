@@ -2,6 +2,7 @@ data "aws_route53_zone" "this" {
   name = var.hosted_zone
 }
 
+
 locals {
   name   = var.suffix == "" ? "cbci-bp02" : "cbci-bp02-${var.suffix}"
   region = "us-east-1"
