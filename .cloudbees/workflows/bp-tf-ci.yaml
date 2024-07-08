@@ -1,19 +1,15 @@
-# Copyright (c) CloudBees, Inc.
-
 apiVersion: automation.cloudbees.io/v1alpha1
 kind: workflow
 name: ci
-
-#TODO: Replace by pull-request with filter for tf files when it is supported
 on:
   push:
     branches:
-      - 'main'
-
+      - main
+  workflow_dispatch:
 env:
-  AWS_REGION: "us-east-1"
-  BUCKET_NAME_TF_STATE: "cbci-eks-addon-tf-state"
-  AWS_ROLE_TO_ASSUME: "infra-admin-ci"
+  AWS_REGION: us-east-1
+  BUCKET_NAME_TF_STATE: cbci-eks-addon-tf-state
+  AWS_ROLE_TO_ASSUME: infra-admin-ci
   REPLAY_STR: "3"
   TF_AUTO_VARS_FILE: |
     tags = {
@@ -28,167 +24,171 @@ env:
       company = "CloudBees Inc."
     }
     suffix = "ci-v5"
-
 jobs:
   init:
     steps:
-
-    - name: Configure AWS Credentials
-      uses: cloudbees-io/configure-aws-credentials@v1
-      with:
-        aws-region: ${{ env.AWS_REGION }}
-        aws-access-key-id: ${{ secrets.tfawscb_aws_access_key_id }}
-        aws-secret-access-key: ${{ secrets.tfawscb_aws_access_key_id }}
-        role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
-        role-external-id: cloudbees
-        role-duration-seconds: "3600"
-
-    - name: Create Terraform Backend Bucket if not exists
-      uses: docker://public.ecr.aws/r1n1q0e5/cloudbees-labs/tf-aws-cb-ci-eks-addon-agent:latest
-      shell: bash
-      run: |
-        aws s3api create-bucket \
-          --bucket ${{ env.BUCKET_NAME_TF_STATE }} \
-          --region ${{ env.AWS_REGION }} || echo "Bucket ${{ env.BUCKET_NAME_TF_STATE }} already exists"
-
-
-
+      - name: Configure AWS Credentials
+        uses: cloudbees-io/configure-aws-credentials@v1
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.tfawscb_aws_access_key_id }}
+          aws-secret-access-key: ${{ secrets.tfawscb_aws_access_key_id }}
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          role-external-id: cloudbees
+          role-duration-seconds: "3600"
+      - name: Create Terraform Backend Bucket if not exists
+        uses: docker://public.ecr.aws/r1n1q0e5/cloudbees-labs/tf-aws-cb-ci-eks-addon-agent:latest
+        shell: bash
+        run: >
+          aws s3api create-bucket \
+            --bucket ${{ env.BUCKET_NAME_TF_STATE }} \
+            --region ${{ env.AWS_REGION }} || echo "Bucket ${{ env.BUCKET_NAME_TF_STATE }} already exists"
   determine-changes:
     steps:
       - name: Checkout code
         uses: cloudbees-io/checkout@v1
-
       - name: Determine changed files
         uses: docker://ubuntu:latest
         id: determine
         shell: bash
-        run: |
-            apt-get update && apt-get install -y git unzip zip
-            echo $(git show --name-only --oneline HEAD | tail -n +2 | grep '.tf$' | tr '\n' ' ')
-            MODIFIED_TF_FILES=$(git show --name-only --oneline HEAD | tail -n +2 | grep '.tf$' | tr '\n' ' ')
-            echo "$MODIFIED_TF_FILES" >  "$CLOUDBEES_OUTPUTS/modified_tf_files" 
-
+        run: >
+          apt-get update && apt-get install -y git unzip zip
+          echo $(git show --name-only --oneline HEAD | tail -n +2 | grep '\.tf$')
+          MODIFIED_TF_FILES=$(git show --name-only --oneline HEAD | tail -n +2 | grep '\.tf$'))
+          echo "$MODIFIED_TF_FILES" >  "$CLOUDBEES_OUTPUTS/modified_tf_files" 
   bp01:
     env:
       CLEAN_UP: "false"
     needs:
       - determine-changes
-    if: contains(needs.determine-changes.outputs.modified_tf_files, 'blueprints/01/')
+    if: contains(needs.determine-changes.outputs.modified_tf_files,
+      'blueprints/01/')
     steps:
+      - name: Configure AWS Credentials
+        uses: cloudbees-io/configure-aws-credentials@v1
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.tfawscb_aws_access_key_id }}
+          aws-secret-access-key: ${{ secrets.tfawscb_aws_secret_access_key }}
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          role-external-id: cloudbees
+          role-duration-seconds: "3600"
+      - name: Checkout code
+        uses: cloudbees-io/checkout@v1
+      - name: 01-getting-started - Deploy
+        uses: docker://public.ecr.aws/r1n1q0e5/cloudbees-labs/tf-aws-cb-ci-eks-addon-agent:latest
+        env:
+          ROOT: 01-getting-started
+          TF_VAR_hosted_zone: bp01.aws.ps.beescloud.com
+        shell: bash
+        run: >
+          cat <<EOT >> blueprints/${{ env.ROOT }}/.auto.tfvars
 
-    - name: Configure AWS Credentials
-      uses: cloudbees-io/configure-aws-credentials@v1
-      with:
-        aws-region: ${{ env.AWS_REGION }}
-        aws-access-key-id: ${{ secrets.tfawscb_aws_access_key_id }}
-        aws-secret-access-key: ${{ secrets.tfawscb_aws_secret_access_key }}
-        role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
-        role-external-id: cloudbees
-        role-duration-seconds: "3600"
+          ${{ env.TF_AUTO_VARS_FILE }}
 
-    - name: Checkout code
-      uses: cloudbees-io/checkout@v1
+          EOT
 
-    - name: 01-getting-started - Deploy
-      uses: docker://public.ecr.aws/r1n1q0e5/cloudbees-labs/tf-aws-cb-ci-eks-addon-agent:latest
-      env:
-        ROOT: 01-getting-started
-        TF_VAR_hosted_zone: bp01.aws.ps.beescloud.com
-      shell: bash
-      run : |
-        cat <<EOT >> blueprints/${{ env.ROOT }}/.auto.tfvars
-        ${{ env.TF_AUTO_VARS_FILE }}
-        EOT
-        cat <<EOT >> blueprints/${{ env.ROOT }}/backend.tf
-        terraform {
-          backend "s3" {
-            bucket = "${{ env.BUCKET_NAME_TF_STATE }}"
-            key    = "${{ env.ROOT }}/ci.terraform.tfstate"
-            region = "${{ env.AWS_REGION }}"
+          cat <<EOT >> blueprints/${{ env.ROOT }}/backend.tf
+
+          terraform {
+            backend "s3" {
+              bucket = "${{ env.BUCKET_NAME_TF_STATE }}"
+              key    = "${{ env.ROOT }}/ci.terraform.tfstate"
+              region = "${{ env.AWS_REGION }}"
+            }
           }
-        }
-        EOT
-        [ "${{ env.CLEAN_UP }}" = "true" ] && echo "Skipping... Clean up mode." || CI=true make deploy
 
-    - name: 01-getting-started - Validate
-      uses: docker://public.ecr.aws/r1n1q0e5/cloudbees-labs/tf-aws-cb-ci-eks-addon-agent:latest
-      env:
-        ROOT: 01-getting-started
-      shell: bash
-      run : |
-        [ "${{ env.CLEAN_UP }}" = "true" ] && echo "Skipping... Clean up mode." || CI=true make validate
+          EOT
 
-    - name: 01-getting-started - Destroy
-      uses: docker://public.ecr.aws/r1n1q0e5/cloudbees-labs/tf-aws-cb-ci-eks-addon-agent:latest
-      env:
-        ROOT: 01-getting-started
-        TF_VAR_hosted_zone: bp01.aws.ps.beescloud.com
-      shell: bash
-      run : |
-        [ "${{ env.CLEAN_UP }}" = "true" ] && terraform -chdir=blueprints/${{ env.ROOT }} init -reconfigure && CI=true make destroy \
-          || CI=true make destroy
-
+          [ "${{ env.CLEAN_UP }}" = "true" ] && echo "Skipping... Clean up mode." || CI=true make deploy
+      - name: 01-getting-started - Validate
+        uses: docker://public.ecr.aws/r1n1q0e5/cloudbees-labs/tf-aws-cb-ci-eks-addon-agent:latest
+        env:
+          ROOT: 01-getting-started
+        shell: bash
+        run: >
+          [ "${{ env.CLEAN_UP }}" = "true" ] && echo "Skipping... Clean up
+          mode." || CI=true make validate
+      - name: 01-getting-started - Destroy
+        uses: docker://public.ecr.aws/r1n1q0e5/cloudbees-labs/tf-aws-cb-ci-eks-addon-agent:latest
+        env:
+          ROOT: 01-getting-started
+          TF_VAR_hosted_zone: bp01.aws.ps.beescloud.com
+        shell: bash
+        run: >
+          [ "${{ env.CLEAN_UP }}" = "true" ] && terraform -chdir=blueprints/${{
+          env.ROOT }} init -reconfigure && CI=true make destroy \
+            || CI=true make destroy
   bp02:
     env:
-        CLEAN_UP: "false"
+      CLEAN_UP: "false"
     needs:
       - determine-changes
-    if: contains(needs.determine-changes.outputs.modified_tf_files, 'blueprints/02/')
+    if: contains(needs.determine-changes.outputs.modified_tf_files,
+      'blueprints/02/')
     steps:
+      - name: Configure AWS Credentials
+        uses: cloudbees-io/configure-aws-credentials@v1
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.tfawscb_aws_access_key_id }}
+          aws-secret-access-key: ${{ secrets.tfawscb_aws_secret_access_key }}
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          role-external-id: cloudbees
+          role-duration-seconds: "3600"
+      - name: Checkout code
+        uses: cloudbees-io/checkout@v1
+      - name: 02-at-scale - Deploy
+        uses: docker://public.ecr.aws/r1n1q0e5/cloudbees-labs/tf-aws-cb-ci-eks-addon-agent:latest
+        env:
+          ROOT: 02-at-scale
+          TF_VAR_hosted_zone: bp02.aws.ps.beescloud.com
+        shell: bash
+        run: >
+          cat <<EOT >> blueprints/${{ env.ROOT }}/.auto.tfvars
 
-    - name: Configure AWS Credentials
-      uses: cloudbees-io/configure-aws-credentials@v1
-      with:
-        aws-region: ${{ env.AWS_REGION }}
-        aws-access-key-id: ${{ secrets.tfawscb_aws_access_key_id }}
-        aws-secret-access-key: ${{ secrets.tfawscb_aws_secret_access_key }}
-        role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
-        role-external-id: cloudbees
-        role-duration-seconds: "3600"
+          ${{ env.TF_AUTO_VARS_FILE }}
 
-    - name: Checkout code
-      uses: cloudbees-io/checkout@v1
+          EOT
 
-    - name: 02-at-scale - Deploy
-      uses: docker://public.ecr.aws/r1n1q0e5/cloudbees-labs/tf-aws-cb-ci-eks-addon-agent:latest
-      env:
-        ROOT: 02-at-scale
-        TF_VAR_hosted_zone: bp02.aws.ps.beescloud.com
-      shell: bash
-      run : |
-        cat <<EOT >> blueprints/${{ env.ROOT }}/.auto.tfvars
-        ${{ env.TF_AUTO_VARS_FILE }}
-        EOT
-        cat <<EOT >> blueprints/${{ env.ROOT }}/backend.tf
-        terraform {
-          backend "s3" {
-            bucket = "${{ env.BUCKET_NAME_TF_STATE }}"
-            key    = "${{ env.ROOT }}/ci.terraform.tfstate"
-            region = "${{ env.AWS_REGION }}"
+          cat <<EOT >> blueprints/${{ env.ROOT }}/backend.tf
+
+          terraform {
+            backend "s3" {
+              bucket = "${{ env.BUCKET_NAME_TF_STATE }}"
+              key    = "${{ env.ROOT }}/ci.terraform.tfstate"
+              region = "${{ env.AWS_REGION }}"
+            }
           }
-        }
-        EOT
-        cat <<EOT >> blueprints/${{ env.ROOT }}/k8s/secrets-values.yml
-        secJenkinsPass: "admin_pass" # Required. Do not update!
-        secGithubUser: "exampleUser"
-        secGithubToken: "ExampleToken"
-        EOT
-        [ "${{ env.CLEAN_UP }}" = "true" ] && echo "Skipping... Clean up mode." || CI=true make deploy
 
-    - name: 02-at-scale - Validate
-      uses: docker://public.ecr.aws/r1n1q0e5/cloudbees-labs/tf-aws-cb-ci-eks-addon-agent:latest
-      env:
-        ROOT: 02-at-scale
-      shell: bash
-      run : |
-        [ "${{ env.CLEAN_UP }}" = "true" ] && echo "Skipping... Clean up mode." || CI=true make validate
+          EOT
 
-    - name: 02-at-scale - Destroy
-      uses: docker://public.ecr.aws/r1n1q0e5/cloudbees-labs/tf-aws-cb-ci-eks-addon-agent:latest
-      env:
-        ROOT: 02-at-scale
-        TF_VAR_hosted_zone: bp02.aws.ps.beescloud.com
-      shell: bash
-      run : |
-        [ "${{ env.CLEAN_UP }}" = "true" ] && terraform -chdir=blueprints/${{ env.ROOT }} init -reconfigure && CI=true make destroy \
-          || CI=true make destroy
+          cat <<EOT >> blueprints/${{ env.ROOT }}/k8s/secrets-values.yml
+
+          secJenkinsPass: "admin_pass" # Required. Do not update!
+
+          secGithubUser: "exampleUser"
+
+          secGithubToken: "ExampleToken"
+
+          EOT
+
+          [ "${{ env.CLEAN_UP }}" = "true" ] && echo "Skipping... Clean up mode." || CI=true make deploy
+      - name: 02-at-scale - Validate
+        uses: docker://public.ecr.aws/r1n1q0e5/cloudbees-labs/tf-aws-cb-ci-eks-addon-agent:latest
+        env:
+          ROOT: 02-at-scale
+        shell: bash
+        run: >
+          [ "${{ env.CLEAN_UP }}" = "true" ] && echo "Skipping... Clean up
+          mode." || CI=true make validate
+      - name: 02-at-scale - Destroy
+        uses: docker://public.ecr.aws/r1n1q0e5/cloudbees-labs/tf-aws-cb-ci-eks-addon-agent:latest
+        env:
+          ROOT: 02-at-scale
+          TF_VAR_hosted_zone: bp02.aws.ps.beescloud.com
+        shell: bash
+        run: >
+          [ "${{ env.CLEAN_UP }}" = "true" ] && terraform -chdir=blueprints/${{
+          env.ROOT }} init -reconfigure && CI=true make destroy \
+            || CI=true make destroy
